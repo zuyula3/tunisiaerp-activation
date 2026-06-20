@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -18,6 +18,114 @@ using System.Text.Json;
 // ⚠️ CHANGEZ CES DEUX VALEURS avant de deployer en production
 const string CLE_SECRETE = "TunisiaERP-2026-ClePriveeVendeur-Yessinus@1042015";
 const string MOT_DE_PASSE_ADMIN = "Jedjud@2672017";
+
+// ── Page admin HTML minimaliste (pas besoin de frontend separe) ───────────
+const string PageAdminHtml = """
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Admin Licences - Tunisia ERP</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;background:#f8fafc;margin:0;padding:24px;color:#0f172a}
+  h1{color:#dc2626}
+  .card{background:white;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+  input,select{padding:8px;margin:4px 0;width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:4px}
+  button{background:#dc2626;color:white;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;font-weight:600}
+  button:hover{background:#b91c1c}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{text-align:left;padding:8px;border-bottom:1px solid #e2e8f0;font-size:13px}
+  th{background:#f1f5f9}
+  .badge{padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600}
+  .badge-ok{background:#dcfce7;color:#16a34a}
+  .badge-revoke{background:#fee2e2;color:#dc2626}
+  .btn-revoke{background:#f59e0b;padding:4px 10px;font-size:12px}
+  #result{margin-top:10px;padding:10px;border-radius:4px;display:none}
+</style>
+</head>
+<body>
+<h1>🔑 Admin Licences - Tunisia ERP</h1>
+
+<div class="card">
+  <h3>Mot de passe admin</h3>
+  <input type="password" id="mdp" placeholder="Mot de passe admin">
+</div>
+
+<div class="card">
+  <h3>Creer une nouvelle licence</h3>
+  <input id="idMachine" placeholder="ID Machine du client (XXXX-XXXX-XXXX-XXXX)">
+  <input id="entreprise" placeholder="Nom de l'entreprise">
+  <select id="edition">
+    <option value="Standard">Standard</option>
+    <option value="Pro">Pro</option>
+    <option value="Entreprise">Entreprise</option>
+  </select>
+  <input id="expiration" type="date">
+  <button onclick="creerLicence()">Generer la cle</button>
+  <div id="result"></div>
+</div>
+
+<div class="card">
+  <h3>Licences existantes</h3>
+  <button onclick="chargerListe()">Actualiser</button>
+  <table id="tableLicences">
+    <thead><tr><th>ID Machine</th><th>Entreprise</th><th>Edition</th><th>Cle</th><th>Expiration</th><th>Statut</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+function mdp(){ return document.getElementById('mdp').value; }
+
+async function creerLicence(){
+  const body = {
+    idMachine: document.getElementById('idMachine').value.trim(),
+    nomEntreprise: document.getElementById('entreprise').value.trim(),
+    edition: document.getElementById('edition').value,
+    dateExpiration: document.getElementById('expiration').value || null
+  };
+  const r = await fetch('/admin/creer', {
+    method:'POST', headers:{'Content-Type':'application/json','X-Admin-Password':mdp()},
+    body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  const div = document.getElementById('result');
+  div.style.display='block';
+  if(r.ok){
+    div.style.background='#dcfce7'; div.style.color='#16a34a';
+    div.innerHTML = '<b>Cle generee :</b> <code style="font-size:16px">'+data.cle+'</code><br>Envoyez cette cle au client.';
+    chargerListe();
+  } else {
+    div.style.background='#fee2e2'; div.style.color='#dc2626';
+    div.innerText = data.erreur || 'Erreur';
+  }
+}
+
+async function chargerListe(){
+  const r = await fetch('/admin/liste', { headers:{'X-Admin-Password':mdp()} });
+  if(!r.ok){ alert('Mot de passe incorrect'); return; }
+  const data = await r.json();
+  const tbody = document.querySelector('#tableLicences tbody');
+  tbody.innerHTML = '';
+  for(const l of data){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${l.idMachine}</td><td>${l.entreprise||''}</td><td>${l.edition}</td>
+      <td><code>${l.cle}</code></td><td>${l.dateExpiration||'Illimitee'}</td>
+      <td>${l.revoquee?'<span class="badge badge-revoke">Revoquee</span>':'<span class="badge badge-ok">Active</span>'}</td>
+      <td>${l.revoquee?'':'<button class="btn-revoke" onclick="revoquer('+l.id+')">Revoquer</button>'}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function revoquer(id){
+  if(!confirm('Revoquer cette licence ?')) return;
+  await fetch('/admin/revoquer/'+id, { method:'POST', headers:{'X-Admin-Password':mdp()} });
+  chargerListe();
+}
+</script>
+</body>
+</html>
+""";
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
@@ -189,110 +297,3 @@ app.Run();
 record ActivationRequest(string IdMachine, string Cle, string Edition);
 record ActivationResponse(bool Succes, string Message, string? DateExpiration, string? NomEntreprise);
 record CreerLicenceRequest(string IdMachine, string NomEntreprise, string Edition, string? DateExpiration);
-
-const string PageAdminHtml = """
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<title>Admin Licences - Tunisia ERP</title>
-<style>
-  body{font-family:Segoe UI,Arial,sans-serif;background:#f8fafc;margin:0;padding:24px;color:#0f172a}
-  h1{color:#dc2626}
-  .card{background:white;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-  input,select{padding:8px;margin:4px 0;width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:4px}
-  button{background:#dc2626;color:white;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;font-weight:600}
-  button:hover{background:#b91c1c}
-  table{width:100%;border-collapse:collapse;margin-top:12px}
-  th,td{text-align:left;padding:8px;border-bottom:1px solid #e2e8f0;font-size:13px}
-  th{background:#f1f5f9}
-  .badge{padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600}
-  .badge-ok{background:#dcfce7;color:#16a34a}
-  .badge-revoke{background:#fee2e2;color:#dc2626}
-  .btn-revoke{background:#f59e0b;padding:4px 10px;font-size:12px}
-  #result{margin-top:10px;padding:10px;border-radius:4px;display:none}
-</style>
-</head>
-<body>
-<h1>🔑 Admin Licences - Tunisia ERP</h1>
-
-<div class="card">
-  <h3>Mot de passe admin</h3>
-  <input type="password" id="mdp" placeholder="Mot de passe admin">
-</div>
-
-<div class="card">
-  <h3>Creer une nouvelle licence</h3>
-  <input id="idMachine" placeholder="ID Machine du client (XXXX-XXXX-XXXX-XXXX)">
-  <input id="entreprise" placeholder="Nom de l'entreprise">
-  <select id="edition">
-    <option value="Standard">Standard</option>
-    <option value="Pro">Pro</option>
-    <option value="Entreprise">Entreprise</option>
-  </select>
-  <input id="expiration" type="date">
-  <button onclick="creerLicence()">Generer la cle</button>
-  <div id="result"></div>
-</div>
-
-<div class="card">
-  <h3>Licences existantes</h3>
-  <button onclick="chargerListe()">Actualiser</button>
-  <table id="tableLicences">
-    <thead><tr><th>ID Machine</th><th>Entreprise</th><th>Edition</th><th>Cle</th><th>Expiration</th><th>Statut</th><th></th></tr></thead>
-    <tbody></tbody>
-  </table>
-</div>
-
-<script>
-function mdp(){ return document.getElementById('mdp').value; }
-
-async function creerLicence(){
-  const body = {
-    idMachine: document.getElementById('idMachine').value.trim(),
-    nomEntreprise: document.getElementById('entreprise').value.trim(),
-    edition: document.getElementById('edition').value,
-    dateExpiration: document.getElementById('expiration').value || null
-  };
-  const r = await fetch('/admin/creer', {
-    method:'POST', headers:{'Content-Type':'application/json','X-Admin-Password':mdp()},
-    body: JSON.stringify(body)
-  });
-  const data = await r.json();
-  const div = document.getElementById('result');
-  div.style.display='block';
-  if(r.ok){
-    div.style.background='#dcfce7'; div.style.color='#16a34a';
-    div.innerHTML = '<b>Cle generee :</b> <code style="font-size:16px">'+data.cle+'</code><br>Envoyez cette cle au client.';
-    chargerListe();
-  } else {
-    div.style.background='#fee2e2'; div.style.color='#dc2626';
-    div.innerText = data.erreur || 'Erreur';
-  }
-}
-
-async function chargerListe(){
-  const r = await fetch('/admin/liste', { headers:{'X-Admin-Password':mdp()} });
-  if(!r.ok){ alert('Mot de passe incorrect'); return; }
-  const data = await r.json();
-  const tbody = document.querySelector('#tableLicences tbody');
-  tbody.innerHTML = '';
-  for(const l of data){
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${l.idMachine}</td><td>${l.entreprise||''}</td><td>${l.edition}</td>
-      <td><code>${l.cle}</code></td><td>${l.dateExpiration||'Illimitee'}</td>
-      <td>${l.revoquee?'<span class="badge badge-revoke">Revoquee</span>':'<span class="badge badge-ok">Active</span>'}</td>
-      <td>${l.revoquee?'':'<button class="btn-revoke" onclick="revoquer('+l.id+')">Revoquer</button>'}</td>`;
-    tbody.appendChild(tr);
-  }
-}
-
-async function revoquer(id){
-  if(!confirm('Revoquer cette licence ?')) return;
-  await fetch('/admin/revoquer/'+id, { method:'POST', headers:{'X-Admin-Password':mdp()} });
-  chargerListe();
-}
-</script>
-</body>
-</html>
-""";
