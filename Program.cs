@@ -190,8 +190,6 @@ record ActivationRequest(string IdMachine, string Cle, string Edition);
 record ActivationResponse(bool Succes, string Message, string? DateExpiration, string? NomEntreprise);
 record CreerLicenceRequest(string IdMachine, string NomEntreprise, string Edition, string? DateExpiration);
 
-// ── Page admin HTML minimaliste (pas besoin de frontend separe) ───────────
-static class PageAdminConst { }
 const string PageAdminHtml = """
 <!DOCTYPE html>
 <html lang="fr">
