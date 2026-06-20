@@ -130,12 +130,12 @@ async function revoquer(id){
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-string DbPath => Path.Combine(AppContext.BaseDirectory, "licences.sqlite");
+string DbPath() => Path.Combine(AppContext.BaseDirectory, "licences.sqlite");
 
 // ── Initialisation base de donnees ──────────────────────────────────────────
 void InitDb()
 {
-    using var c = new SqliteConnection($"Data Source={DbPath}");
+    using var c = new SqliteConnection($"Data Source={DbPath()}");
     c.Open();
     using var cmd = c.CreateCommand();
     cmd.CommandText = @"
@@ -173,7 +173,7 @@ bool VerifierAdmin(HttpRequest req)
 // ── API CLIENT: activation d'une licence (appelee depuis Tunisia ERP) ──────
 app.MapPost("/api/activer", (ActivationRequest req) =>
 {
-    using var c = new SqliteConnection($"Data Source={DbPath}");
+    using var c = new SqliteConnection($"Data Source={DbPath()}");
     c.Open();
 
     using var cmd = c.CreateCommand();
@@ -226,7 +226,7 @@ app.MapPost("/admin/creer", (HttpRequest http, CreerLicenceRequest req) =>
     if (!VerifierAdmin(http)) return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
 
     string cle = CalculerCle(req.IdMachine, req.Edition);
-    using var c = new SqliteConnection($"Data Source={DbPath}");
+    using var c = new SqliteConnection($"Data Source={DbPath()}");
     c.Open();
     using var cmd = c.CreateCommand();
     cmd.CommandText = @"INSERT INTO Licences(IdMachine,Cle,NomEntreprise,Edition,DateCreation,DateExpiration)
@@ -248,7 +248,7 @@ app.MapGet("/admin/liste", (HttpRequest http) =>
 {
     if (!VerifierAdmin(http)) return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
 
-    using var c = new SqliteConnection($"Data Source={DbPath}");
+    using var c = new SqliteConnection($"Data Source={DbPath()}");
     c.Open();
     using var cmd = c.CreateCommand();
     cmd.CommandText = "SELECT * FROM Licences ORDER BY DateCreation DESC";
@@ -277,7 +277,7 @@ app.MapPost("/admin/revoquer/{id}", (HttpRequest http, int id) =>
 {
     if (!VerifierAdmin(http)) return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
 
-    using var c = new SqliteConnection($"Data Source={DbPath}");
+    using var c = new SqliteConnection($"Data Source={DbPath()}");
     c.Open();
     using var cmd = c.CreateCommand();
     cmd.CommandText = "UPDATE Licences SET Revoquee=1 WHERE IdLicence=@id";
