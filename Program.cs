@@ -272,26 +272,8 @@ app.MapGet("/admin/liste", (HttpRequest http) =>
     return Results.Json(liste);
 });
 
-// ── ADMIN: revoquer une licence ─────────────────────────────────────────────
-app.MapPost("/admin/revoquer/{id}", (HttpRequest http, int id) =>
-{
-    if (!VerifierAdmin(http)) return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
+// Programma aggiunto  :
 
-    using var c = new SqliteConnection($"Data Source={DbPath()}");
-    c.Open();
-    using var cmd = c.CreateCommand();
-    cmd.CommandText = "UPDATE Licences SET Revoquee=1 WHERE IdLicence=@id";
-    cmd.Parameters.AddWithValue("@id", id);
-    cmd.ExecuteNonQuery();
-    return Results.Json(new { message = "Licence revoquee." });
-});
-
-// ── ADMIN: page web simple pour gerer les licences sans coder ──────────────
-app.MapGet("/admin", () => Results.Content(PageAdminHtml, "text/html; charset=utf-8"));
-
-app.MapGet("/", () => "Serveur d'activation Tunisia ERP - operationnel.");
-
-app.Run();
 
 // ── Modeles ──────────────────────────────────────────────────────────────
 record ActivationRequest(string IdMachine, string Cle, string Edition);
@@ -408,3 +390,32 @@ app.MapGet("/backup/info", (HttpRequest http) =>
         nbBackupsStockes = backups
     });
 });
+
+// programma aggiunto finisce qua 
+
+
+
+// ── ADMIN: revoquer une licence ─────────────────────────────────────────────
+app.MapPost("/admin/revoquer/{id}", (HttpRequest http, int id) =>
+{
+    if (!VerifierAdmin(http)) return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
+
+    using var c = new SqliteConnection($"Data Source={DbPath()}");
+    c.Open();
+    using var cmd = c.CreateCommand();
+    cmd.CommandText = "UPDATE Licences SET Revoquee=1 WHERE IdLicence=@id";
+    cmd.Parameters.AddWithValue("@id", id);
+    cmd.ExecuteNonQuery();
+    return Results.Json(new { message = "Licence revoquee." });
+});
+
+// ── ADMIN: page web simple pour gerer les licences sans coder ──────────────
+app.MapGet("/admin", () => Results.Content(PageAdminHtml, "text/html; charset=utf-8"));
+
+app.MapGet("/", () => "Serveur d'activation Tunisia ERP - operationnel.");
+
+app.Run();
+  
+
+
+
