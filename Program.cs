@@ -297,3 +297,114 @@ app.Run();
 record ActivationRequest(string IdMachine, string Cle, string Edition);
 record ActivationResponse(bool Succes, string Message, string? DateExpiration, string? NomEntreprise);
 record CreerLicenceRequest(string IdMachine, string NomEntreprise, string Edition, string? DateExpiration);
+//+++++++++++++++++++++++++++
+// ═══════════════════════════════════════════════════════════════════════
+// BACKUP ENDPOINT — da aggiungere in Program.cs (ServeurActivation)
+// ═══════════════════════════════════════════════════════════════════════
+// Aggiunge questi 3 endpoint al server esistente, prima di app.Run():
+//
+//   POST /backup/upload     → riceve il file .sqlite
+//   GET  /backup/download   → scarica l'ultimo backup
+//   GET  /backup/info       → info sull'ultimo backup (data, dimensione)
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Cartella dove salvare i backup sul server ─────────────────────────
+string BackupDir => Path.Combine(AppContext.BaseDirectory, "backups");
+
+void InitBackupDir()
+{
+    Directory.CreateDirectory(BackupDir);
+}
+InitBackupDir();
+
+// ── POST /backup/upload ───────────────────────────────────────────────
+// Riceve il file .sqlite e lo salva sul server
+// Header richiesto: X-Admin-Password (stessa password admin)
+// Body: file binario .sqlite (multipart/form-data o application/octet-stream)
+app.MapPost("/backup/upload", async (HttpRequest http) =>
+{
+    if (!VerifierAdmin(http))
+        return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
+
+    try
+    {
+        // Salva il backup con timestamp
+        string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
+        string nomFichier = $"tndb_{timestamp}.sqlite";
+        string cheminDest = Path.Combine(BackupDir, nomFichier);
+        string cheminLast = Path.Combine(BackupDir, "tndb_latest.sqlite");
+
+        // Legge il body (file binario)
+        using var ms = new MemoryStream();
+        await http.Body.CopyToAsync(ms);
+        byte[] data = ms.ToArray();
+
+        if (data.Length == 0)
+            return Results.Json(new { erreur = "Fichier vide reçu" }, statusCode: 400);
+
+        // Salva il backup con timestamp (storico)
+        await File.WriteAllBytesAsync(cheminDest, data);
+
+        // Aggiorna anche il "latest" (sovrascrive)
+        await File.WriteAllBytesAsync(cheminLast, data);
+
+        // Mantieni solo gli ultimi 7 backup (pulizia automatica)
+        var backups = Directory.GetFiles(BackupDir, "tndb_2*.sqlite")
+            .OrderByDescending(f => f).ToList();
+        foreach (var old in backups.Skip(7))
+            try { File.Delete(old); } catch { }
+
+        return Results.Json(new
+        {
+            message = "Backup reçu et sauvegardé avec succès.",
+            fichier = nomFichier,
+            taille = data.Length,
+            date = DateTime.UtcNow.ToString("dd/MM/yyyy HH:mm:ss") + " UTC"
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { erreur = "Erreur serveur: " + ex.Message }, statusCode: 500);
+    }
+});
+
+// ── GET /backup/download ──────────────────────────────────────────────
+// Télécharge le dernier backup
+// Header requis: X-Admin-Password
+app.MapGet("/backup/download", (HttpRequest http) =>
+{
+    if (!VerifierAdmin(http))
+        return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
+
+    string cheminLast = Path.Combine(BackupDir, "tndb_latest.sqlite");
+    if (!File.Exists(cheminLast))
+        return Results.Json(new { erreur = "Aucun backup disponible sur le serveur." }, statusCode: 404);
+
+    var bytes = File.ReadAllBytes(cheminLast);
+    return Results.File(bytes, "application/octet-stream", "tndb_latest.sqlite");
+});
+
+// ── GET /backup/info ──────────────────────────────────────────────────
+// Infos sur le dernier backup (date, taille, nb backups)
+// Header requis: X-Admin-Password
+app.MapGet("/backup/info", (HttpRequest http) =>
+{
+    if (!VerifierAdmin(http))
+        return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
+
+    string cheminLast = Path.Combine(BackupDir, "tndb_latest.sqlite");
+    if (!File.Exists(cheminLast))
+        return Results.Json(new { disponible = false, message = "Aucun backup sur le serveur." });
+
+    var info = new FileInfo(cheminLast);
+    var backups = Directory.GetFiles(BackupDir, "tndb_2*.sqlite").Length;
+
+    return Results.Json(new
+    {
+        disponible = true,
+        dateModification = info.LastWriteTimeUtc.ToString("dd/MM/yyyy HH:mm:ss") + " UTC",
+        tailleMo = Math.Round(info.Length / 1024.0 / 1024.0, 2),
+        tailleOctets = info.Length,
+        nbBackupsStockes = backups
+    });
+});
