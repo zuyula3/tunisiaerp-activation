@@ -11,6 +11,159 @@ using System.Text.Json;
 const string CLE_SECRETE = "TunisiaERP-2026-ClePriveeVendeur-Yessinus@1042015";
 const string MOT_DE_PASSE_ADMIN = "Jedjud@2672017";
 
+// ── Page accueil HTML ────────────────────────────────────────────────────
+const string PageAccueilHtml = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Tunisia ERP Server</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;background:#0f172a;margin:0;display:flex;align-items:center;justify-content:center;height:100vh;color:white}
+  .card{background:#1e293b;border-radius:16px;padding:48px;text-align:center;max-width:480px}
+  h1{color:#3b82f6;font-size:2rem;margin-bottom:8px}
+  p{color:#94a3b8;margin-bottom:32px}
+  .btn{display:inline-block;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;margin:8px;font-size:15px}
+  .btn-blue{background:#3b82f6;color:white}
+  .btn-red{background:#dc2626;color:white}
+  .status{background:#022c22;border:1px solid #16a34a;color:#4ade80;padding:10px 20px;border-radius:8px;font-size:13px;margin-bottom:24px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🇹🇳 Tunisia ERP</h1>
+  <p>Serveur d'activation et de backup</p>
+  <div class="status">✅ Opérationnel</div>
+  <a href="/admin" class="btn btn-red">🔑 Admin Licences</a>
+  <a href="/backup" class="btn btn-blue">💾 Gestion Backup</a>
+</div>
+</body>
+</html>
+""";
+
+// ── Page backup HTML ──────────────────────────────────────────────────────
+const string PageBackupHtml = """
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Backup - Tunisia ERP</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Segoe UI,Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:32px 16px}
+  .container{max-width:600px;margin:0 auto}
+  h1{color:#3b82f6;font-size:1.8rem;margin-bottom:6px}
+  .sub{color:#64748b;margin-bottom:32px;font-size:14px}
+  .card{background:#1e293b;border-radius:12px;padding:24px;margin-bottom:20px;border:1px solid #334155}
+  .card h3{font-size:1rem;margin-bottom:16px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;font-size:12px}
+  input[type=password]{width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:white;font-size:15px;margin-bottom:12px}
+  input[type=password]:focus{outline:none;border-color:#3b82f6}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:600;width:100%;justify-content:center;margin-bottom:10px;transition:opacity .2s}
+  .btn:hover{opacity:.85}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn-blue{background:#3b82f6;color:white}
+  .btn-green{background:#16a34a;color:white}
+  .btn-orange{background:#ea580c;color:white}
+  .info-box{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:16px;font-size:13px;color:#94a3b8;min-height:60px}
+  .info-box.ok{border-color:#16a34a;color:#4ade80}
+  .info-box.err{border-color:#dc2626;color:#f87171}
+  .row{display:flex;gap:12px}
+  .row .btn{flex:1}
+  .badge{display:inline-block;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:700;background:#16a34a22;color:#4ade80;border:1px solid #16a34a44}
+  #statusBox{margin-top:12px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>💾 Gestion Backup</h1>
+  <p class="sub">Tunisia ERP — Sauvegarde de la base de données</p>
+
+  <!-- Auth -->
+  <div class="card">
+    <h3>🔐 Authentification</h3>
+    <input type="password" id="mdp" placeholder="Mot de passe admin" autocomplete="current-password">
+  </div>
+
+  <!-- Info backup -->
+  <div class="card">
+    <h3>📊 Dernier backup sur le serveur</h3>
+    <div class="info-box" id="infoBox">Cliquez sur "Actualiser" pour voir l'état du backup.</div>
+    <br>
+    <button class="btn btn-blue" onclick="actualiser()">🔄 Actualiser</button>
+  </div>
+
+  <!-- Actions -->
+  <div class="card">
+    <h3>⚡ Actions</h3>
+    <button class="btn btn-green" onclick="telecharger()">⬇ Télécharger le backup (.sqlite)</button>
+    <div id="statusBox" class="info-box" style="display:none"></div>
+  </div>
+
+  <!-- Historique -->
+  <div class="card">
+    <h3>🗂 Historique des backups</h3>
+    <div class="info-box" id="historiqueBox">Cliquez sur "Actualiser" pour voir l'historique.</div>
+  </div>
+</div>
+
+<script>
+function mdp(){ return document.getElementById('mdp').value; }
+
+function showStatus(msg, ok=true){
+  const b = document.getElementById('statusBox');
+  b.style.display='block';
+  b.className='info-box '+(ok?'ok':'err');
+  b.innerHTML=msg;
+}
+
+async function actualiser(){
+  if(!mdp()){alert('Entrez le mot de passe admin');return;}
+  try{
+    const r = await fetch('/backup/info', {headers:{'X-Admin-Password':mdp()}});
+    const d = await r.json();
+    const box = document.getElementById('infoBox');
+    if(!r.ok){box.className='info-box err';box.innerHTML='❌ '+d.erreur;return;}
+    if(!d.disponible){box.className='info-box';box.innerHTML='⚠️ Aucun backup disponible sur le serveur.';return;}
+    box.className='info-box ok';
+    box.innerHTML=`✅ <b>Disponible</b><br>
+      📅 Date: <b>${d.dateModification}</b><br>
+      💿 Taille: <b>${d.tailleMo} Mo</b><br>
+      📦 Sauvegardes stockées: <b>${d.nbBackupsStockes}</b>`;
+  }catch(e){
+    document.getElementById('infoBox').className='info-box err';
+    document.getElementById('infoBox').innerHTML='❌ Erreur: '+e.message;
+  }
+}
+
+async function telecharger(){
+  if(!mdp()){alert('Entrez le mot de passe admin');return;}
+  showStatus('⏳ Téléchargement en cours...');
+  try{
+    const r = await fetch('/backup/download', {headers:{'X-Admin-Password':mdp()}});
+    if(!r.ok){const d=await r.json();showStatus('❌ '+d.erreur,false);return;}
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const date = new Date().toISOString().slice(0,10);
+    a.href     = url;
+    a.download = 'tndb_backup_'+date+'.sqlite';
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);URL.revokeObjectURL(url);
+    showStatus('✅ Backup téléchargé avec succès!');
+  }catch(e){
+    showStatus('❌ Erreur: '+e.message,false);
+  }
+}
+
+// Actualise automatiquement au chargement si mot de passe mémorisé
+window.onload = () => {
+  document.getElementById('mdp').addEventListener('keydown', e => {
+    if(e.key==='Enter') actualiser();
+  });
+};
+</script>
+</body>
+</html>
+""";
+
 // ── Page admin HTML ───────────────────────────────────────────────────────
 const string PageAdminHtml = """
 <!DOCTYPE html>
@@ -331,8 +484,11 @@ app.MapGet("/backup/info", (HttpRequest http) =>
     });
 });
 
+// ── PAGE WEB BACKUP ──────────────────────────────────────────────────────
+app.MapGet("/backup", () => Results.Content(PageBackupHtml, "text/html; charset=utf-8"));
+
 // ── HOME ──────────────────────────────────────────────────────────────────
-app.MapGet("/", () => "Serveur d'activation Tunisia ERP - operationnel.");
+app.MapGet("/", () => Results.Content(PageAccueilHtml, "text/html; charset=utf-8"));
 
 app.Run();
 
