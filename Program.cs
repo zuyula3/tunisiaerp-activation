@@ -268,8 +268,11 @@ async function revoquer(id){
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-string DbPath() => Path.Combine(AppContext.BaseDirectory, "licences.sqlite");
-string BackupDir() => Path.Combine(AppContext.BaseDirectory, "backups");
+// ── Render Disk monté sur /data (persistant entre les redémarrages) ──────
+// En local (développement), utilise le répertoire de l'app
+string DataDir() => Directory.Exists("/data") ? "/data" : AppContext.BaseDirectory;
+string DbPath()    => Path.Combine(DataDir(), "licences.sqlite");
+string BackupDir() => Path.Combine(DataDir(), "backups");
 
 // ── Initialisation ────────────────────────────────────────────────────────
 void InitDb()
