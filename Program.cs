@@ -277,22 +277,30 @@ app.MapGet("/backup/info", async (HttpRequest http, IHttpClientFactory factory) 
         nbBackupsStockes = count });
 });
 
-// ── DEBUG: test connessione Turso ────────────────────────────────────────
+// ── DEBUG: test connessione Turso (raw response) ─────────────────────────
 app.MapGet("/debug/turso", async (HttpRequest http, IHttpClientFactory factory) =>
 {
     if (!VerifierAdmin(http)) return Results.Json(new { erreur = "Non autorise" }, statusCode: 401);
     try {
-        // Test insert
-        await TursoQuery(factory,
-            "INSERT INTO Licences(IdMachine,Cle,NomEntreprise,Edition,DateCreation) VALUES(?,?,?,?,?)",
-            new List<object?> { "TEST-DEBUG-0000-0000","AAAAA-BBBBB-CCCCC-DDDDD","Test Debug","Standard",DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") });
-        // Test select
-        var rows = await TursoQuery(factory, "SELECT COUNT(*) as nb FROM Licences");
-        // Test delete
-        await TursoQuery(factory, "DELETE FROM Licences WHERE IdMachine=?", new List<object?>{"TEST-DEBUG-0000-0000"});
-        return Results.Json(new { ok = true, tursoUrl = TursoUrl(), count = rows.FirstOrDefault()?.GetValueOrDefault("nb","?") });
+        // Restituisce la risposta RAW di Turso per capire il formato esatto
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TursoToken());
+        var payload = new {
+            requests = new object[] {
+                new { type = "execute", stmt = new { sql = "SELECT COUNT(*) as nb FROM Licences", args = Array.Empty<object>() } },
+                new { type = "close" }
+            }
+        };
+        var json    = System.Text.Json.JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var url     = TursoUrl().Replace("libsql://", "https://") + "/v2/pipeline";
+        var resp    = await client.PostAsync(url, content);
+        var body    = await resp.Content.ReadAsStringAsync();
+        // Restituisce la risposta grezza di Turso
+        return Results.Content(body, "application/json");
     } catch (Exception ex) {
-        return Results.Json(new { ok = false, erreur = ex.Message, tursoUrl = TursoUrl() });
+        return Results.Json(new { ok = false, erreur = ex.Message });
     }
 });
 
