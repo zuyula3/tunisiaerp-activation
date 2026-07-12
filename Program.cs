@@ -86,18 +86,22 @@ async Task<List<Dictionary<string,string>>> TursoQuery(
     var rows = new List<Dictionary<string,string>>();
     try {
         var doc    = JsonDocument.Parse(body).RootElement;
-        var result = doc[0].GetProperty("response").GetProperty("result");
-        var cols   = result.GetProperty("cols").EnumerateArray()
-                          .Select(c => c.GetProperty("name").GetString()!).ToList();
+        // Turso restituisce: {"results":[{"type":"ok","response":{"type":"execute","result":{...}}},...]}
+        var results = doc.GetProperty("results");
+        var result  = results[0].GetProperty("response").GetProperty("result");
+        var cols    = result.GetProperty("cols").EnumerateArray()
+                           .Select(c => c.GetProperty("name").GetString()!).ToList();
         foreach (var row in result.GetProperty("rows").EnumerateArray())
         {
             var dict = new Dictionary<string,string>();
             var vals = row.EnumerateArray().ToList();
             for (int i = 0; i < cols.Count; i++)
             {
-                var cell = vals[i];
-                dict[cols[i]] = cell.GetProperty("type").GetString() == "null"
-                    ? "" : cell.GetProperty("value").GetString() ?? "";
+                var cell     = vals[i];
+                string type  = cell.GetProperty("type").GetString() ?? "null";
+                string value = type == "null" ? "" :
+                               cell.TryGetProperty("value", out var v) ? v.GetString() ?? v.ToString() : "";
+                dict[cols[i]] = value;
             }
             rows.Add(dict);
         }
