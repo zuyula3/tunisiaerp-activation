@@ -163,15 +163,31 @@ app.MapPost("/api/activer", async (ActivationRequest req, IHttpClientFactory fac
 app.MapPost("/admin/creer", async (HttpRequest http, CreerLicenceRequest req, IHttpClientFactory factory) =>
 {
     if (!VerifierAdmin(http)) return Results.Json(new { erreur = "Mot de passe admin incorrect" }, statusCode: 401);
-    string cle = CalculerCle(req.IdMachine, req.Edition);
-    await TursoQuery(factory,
-        @"INSERT INTO Licences(IdMachine,Cle,NomEntreprise,Edition,DateCreation,DateExpiration)
-          VALUES(?,?,?,?,?,?)
-          ON CONFLICT(IdMachine,Edition) DO UPDATE SET Cle=?,NomEntreprise=?,DateExpiration=?,Revoquee=0",
-        new List<object?> {
-            req.IdMachine.ToUpper(), cle, req.NomEntreprise, req.Edition,
-            DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"), req.DateExpiration,
-            cle, req.NomEntreprise, req.DateExpiration });
+    string cle      = CalculerCle(req.IdMachine, req.Edition);
+    string idMach   = req.IdMachine.ToUpper();
+    string dateNow  = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+    string dateExp  = req.DateExpiration ?? "";
+
+    // Verifica se esiste già
+    var existing = await TursoQuery(factory,
+        "SELECT IdLicence FROM Licences WHERE IdMachine=? AND Edition=?",
+        new List<object?> { idMach, req.Edition });
+
+    if (existing.Count > 0)
+    {
+        // Aggiorna
+        await TursoQuery(factory,
+            "UPDATE Licences SET Cle=?, NomEntreprise=?, DateExpiration=?, Revoquee=0 WHERE IdMachine=? AND Edition=?",
+            new List<object?> { cle, req.NomEntreprise, dateExp, idMach, req.Edition });
+    }
+    else
+    {
+        // Inserisce
+        await TursoQuery(factory,
+            "INSERT INTO Licences(IdMachine,Cle,NomEntreprise,Edition,DateCreation,DateExpiration) VALUES(?,?,?,?,?,?)",
+            new List<object?> { idMach, cle, req.NomEntreprise, req.Edition, dateNow, dateExp });
+    }
+
     return Results.Json(new { cle, message = "Licence creee. Envoyez cette cle au client." });
 });
 
@@ -259,6 +275,25 @@ app.MapGet("/backup/info", async (HttpRequest http, IHttpClientFactory factory) 
         tailleMo         = Math.Round(taille/1024.0/1024.0, 2),
         tailleOctets     = taille,
         nbBackupsStockes = count });
+});
+
+// ── DEBUG: test connessione Turso ────────────────────────────────────────
+app.MapGet("/debug/turso", async (HttpRequest http, IHttpClientFactory factory) =>
+{
+    if (!VerifierAdmin(http)) return Results.Json(new { erreur = "Non autorise" }, statusCode: 401);
+    try {
+        // Test insert
+        await TursoQuery(factory,
+            "INSERT INTO Licences(IdMachine,Cle,NomEntreprise,Edition,DateCreation) VALUES(?,?,?,?,?)",
+            new List<object?> { "TEST-DEBUG-0000-0000","AAAAA-BBBBB-CCCCC-DDDDD","Test Debug","Standard",DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") });
+        // Test select
+        var rows = await TursoQuery(factory, "SELECT COUNT(*) as nb FROM Licences");
+        // Test delete
+        await TursoQuery(factory, "DELETE FROM Licences WHERE IdMachine=?", new List<object?>{"TEST-DEBUG-0000-0000"});
+        return Results.Json(new { ok = true, tursoUrl = TursoUrl(), count = rows.FirstOrDefault()?.GetValueOrDefault("nb","?") });
+    } catch (Exception ex) {
+        return Results.Json(new { ok = false, erreur = ex.Message, tursoUrl = TursoUrl() });
+    }
 });
 
 // ── PAGES WEB ─────────────────────────────────────────────────────────────
